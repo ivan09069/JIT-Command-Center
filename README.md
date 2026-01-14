@@ -1,36 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# JIT Command Center 🎛️
 
-## Getting Started
+Real-time infrastructure monitoring dashboard with cyberpunk HUD aesthetic.
 
-First, run the development server:
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=next.js&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-38B2AC?style=flat&logo=tailwind-css&logoColor=white)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## Features
+
+- 🔴 **Reactive Threat System** - UI auto-tints based on threat level
+- 📊 **Real-time Metrics** - Live system monitoring widgets
+- 🎨 **Token-driven CSS** - Cyberpunk HUD design system
+- ⚡ **Next.js 14** - App router with TypeScript
+- 🌙 **Dark Mode** - Optimized for low-light operation
+
+## Architecture
+
+```
+┌─────────────────────────────────────────┐
+│           JIT COMMAND CENTER            │
+├─────────────┬─────────────┬─────────────┤
+│   THREAT    │   SYSTEM    │   NETWORK   │
+│   MONITOR   │   METRICS   │   STATUS    │
+├─────────────┼─────────────┼─────────────┤
+│    CPU      │   MEMORY    │   STORAGE   │
+│   GRAPHS    │   USAGE     │   I/O       │
+└─────────────┴─────────────┴─────────────┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Quick Start
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# Clone
+git clone https://github.com/ivan09069/JIT-Command-Center.git
+cd JIT-Command-Center
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# Install
+npm install
 
-## Learn More
+# Run
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:3000](http://localhost:3000)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deployment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Vercel (Recommended)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ivan09069/JIT-Command-Center)
 
-## Deploy on Vercel
+### Manual
+```bash
+npm run build
+npm start
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Tech Stack
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Component | Technology |
+|-----------|------------|
+| Framework | Next.js 14 |
+| Language | TypeScript |
+| Styling | Tailwind CSS |
+| Fonts | Geist (Vercel) |
+
+## Part of EchoForge Studios
+
+- [EchoForge](https://github.com/ivan09069/EchoForge) - Portfolio Tracker
+- [SwarmSentinel-v3](https://github.com/ivan09069/SwarmSentinel-v3) - Trading Bot
+- [echoforge-texas-platform](https://github.com/ivan09069/echoforge-texas-platform) - Energy Platform
+
+---
+
+**Built by EchoForge Studios** | *Forged, not finished*
+
