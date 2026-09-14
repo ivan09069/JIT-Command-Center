@@ -1,4 +1,5 @@
-﻿// app/api/status/route.ts - Live deployment status from Vercel + Railway
+import { authorizeOperator } from '@/lib/api-auth.mjs';
+// app/api/status/route.ts - Live deployment status from Vercel + Railway
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,10 +27,10 @@ async function getVercelDeployments() {
 
   try {
     const res = await fetch(
-      `https://api.vercel.com/v6/deployments?projectId={projectId}&limit=5`,
+      `https://api.vercel.com/v6/deployments?projectId=${encodeURIComponent(projectId)}&limit=5`,
       {
         headers: { 
-          Authorization: `Bearer {token}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
         cache: 'no-store'
@@ -39,7 +40,7 @@ async function getVercelDeployments() {
     if (!res.ok) {
       return { 
         ok: false, 
-        error: `Vercel API returned {res.status}`,
+        error: `Vercel API returned ${res.status}`,
         data: null 
       };
     }
@@ -54,7 +55,7 @@ async function getVercelDeployments() {
         deployments: deployments.map(d => ({
           id: d.uid,
           name: d.name,
-          url: `https://{d.url}`,
+          url: `https://${d.url}`,
           state: d.state,
           createdAt: d.createdAt,
           readyAt: d.ready
@@ -65,7 +66,7 @@ async function getVercelDeployments() {
   } catch (err) {
     return { 
       ok: false, 
-      error: String(err),
+      error: 'Provider request failed',
       data: null 
     };
   }
@@ -116,7 +117,7 @@ async function getRailwayServices() {
     const res = await fetch('https://backboard.railway.app/graphql/v2', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer {token}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ query }),
@@ -126,7 +127,7 @@ async function getRailwayServices() {
     if (!res.ok) {
       return { 
         ok: false, 
-        error: `Railway API returned {res.status}`,
+        error: `Railway API returned ${res.status}`,
         data: null 
       };
     }
@@ -162,25 +163,19 @@ async function getRailwayServices() {
   } catch (err) {
     return { 
       ok: false, 
-      error: String(err),
+      error: 'Provider request failed',
       data: null 
     };
   }
 }
 
 async function getDiskStatus() {
-  return {
-    ok: true,
-    data: {
-      total: 1000 * 1024 * 1024 * 1024,
-      used: 995 * 1024 * 1024 * 1024,
-      free: 5 * 1024 * 1024 * 1024,
-      percent: 99.5
-    }
-  };
+  return { ok: false, error: 'Device disk telemetry is not connected', data: null };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = authorizeOperator(request);
+  if (denied) return denied;
   const [vercel, railway, disk] = await Promise.allSettled([
     getVercelDeployments(),
     getRailwayServices(),
@@ -194,5 +189,5 @@ export async function GET() {
       railway: railway.status === 'fulfilled' ? railway.value : { ok: false, error: 'Promise rejected' },
       disk: disk.status === 'fulfilled' ? disk.value : { ok: false, error: 'Promise rejected' }
     }
-  });
+  }, { headers: { 'Cache-Control': 'no-store' } });
 }

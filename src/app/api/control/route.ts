@@ -3,6 +3,7 @@
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+import { authorizeOperator } from '@/lib/api-auth.mjs';
 import { gate } from '@/lib/gate';
 import type { ControlRequest } from '@/lib/policy';
 
@@ -12,7 +13,13 @@ import type { ControlRequest } from '@/lib/policy';
  * CRITICAL: This is server-side only. Never expose tokens to client.
  */
 export async function POST(request: Request) {
-  const controlRequest: ControlRequest = await request.json();
+  const denied = authorizeOperator(request);
+  if (denied) return denied;
+  let controlRequest: ControlRequest;
+  try { controlRequest = await request.json(); }
+  catch { return Response.json({ error: 'Invalid JSON' }, { status: 400 }); }
+  if (!controlRequest || typeof controlRequest !== 'object' || Array.isArray(controlRequest))
+    return Response.json({ error: 'Invalid control request' }, { status: 400 });
 
   // Validate request
   if (!controlRequest.type || !controlRequest.target) {

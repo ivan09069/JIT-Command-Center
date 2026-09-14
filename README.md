@@ -74,3 +74,17 @@ npm start
 
 **Built by EchoForge Studios** | *Forged, not finished*
 
+
+## Authenticated API and telemetry status
+
+Both `/api/control` and `/api/status` require `Authorization: Bearer` with the
+server-side `CONTROL_API_TOKEN` (at least 32 random characters). Never prefix this
+secret with `NEXT_PUBLIC_` or place it in frontend source. The existing policy gate
+still applies after authentication; this change does not bypass its FIDO2 or safety
+requirements. The UI remains a labelled preview, not an authenticated control UI.
+
+Provider requests now interpolate configured values correctly. Device disk metrics
+are explicitly unknown until a real device adapter exists. Hosting telemetry must
+not be presented as the Android device's storage measurement.
+
+Offline tests require Node 24 and use mocked providers: `node --test security.test.mjs`.

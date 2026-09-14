@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 
 export default function InfrastructureHUD() {
-  const [diskPct, setDiskPct] = useState(99.5);
   const [threatLevel, setThreatLevel] = useState(70);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -25,13 +24,13 @@ export default function InfrastructureHUD() {
       {/* Header */}
       <header className="hud-header">
         <div className="hud-chip" style={{ color: 'var(--hud-green)' }}>
-          SYS ONLINE
+          PREVIEW
         </div>
         <div className="hud-title">
           ECHOFORGE COMMAND CENTER
         </div>
         <div className="hud-chip" style={{ color: 'var(--hud-green)' }}>
-          ACTIVE
+          DEMO DATA
         </div>
       </header>
 
@@ -45,14 +44,14 @@ export default function InfrastructureHUD() {
 
           <div className="hud-panel-title">
             <span>▸ Telemetry Core</span>
-            <span style={{ color: 'var(--hud-amber)' }}>DISK: WARN</span>
+            <span style={{ color: 'var(--hud-amber)' }}>DISK: UNKNOWN</span>
           </div>
 
           <div className="arc-core">
             <div className="arc-core-inner">
               <div className="text-center">
                 <div className="arc-core-value" style={{ color: 'var(--hud-cyan)' }}>
-                  {Math.round(diskPct)}%
+                  Unknown
                 </div>
                 <div className="arc-core-sub" style={{ color: 'var(--hud-cyan)' }}>
                   ARC-CORE STABILITY
@@ -64,15 +63,15 @@ export default function InfrastructureHUD() {
           <div className="mt-6 space-y-2 text-sm font-mono">
             <div className="flex justify-between">
               <span className="opacity-70">• usedPct:</span>
-              <span style={{ color: 'var(--hud-cyan)' }}>{diskPct.toFixed(1)}%</span>
+              <span style={{ color: 'var(--hud-cyan)' }}>Unknown</span>
             </div>
             <div className="flex justify-between">
               <span className="opacity-70">• freeGb:</span>
-              <span style={{ color: 'var(--hud-cyan)' }}>26.4 / totalGb: 94.3</span>
+              <span style={{ color: 'var(--hud-cyan)' }}>Not connected</span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="opacity-70">• mount:</span>
-              <span style={{ color: 'var(--hud-cyan)' }}>/data/data/com.termux</span>
+              <span style={{ color: 'var(--hud-cyan)' }}>Not connected</span>
             </div>
           </div>
         </section>
