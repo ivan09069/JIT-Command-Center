@@ -1,0 +1,12 @@
+# Use a manual CLI preview first; see NETLIFY_DEPLOYMENT.md.
+# Git builds also detect the unrelated root requirements.txt and install Python.
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "24"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Netlify automatically supplies the Next.js adapter. Keep API route handlers;
+# a static export or SPA catch-all would remove their authorization checks.

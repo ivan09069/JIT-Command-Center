@@ -11,7 +11,7 @@ Real-time infrastructure monitoring dashboard with cyberpunk HUD aesthetic.
 - 🔴 **Reactive Threat System** - UI auto-tints based on threat level
 - 📊 **Real-time Metrics** - Live system monitoring widgets
 - 🎨 **Token-driven CSS** - Cyberpunk HUD design system
-- ⚡ **Next.js 14** - App router with TypeScript
+- ⚡ **Next.js 16** - App router with TypeScript
 - 🌙 **Dark Mode** - Optimized for low-light operation
 
 ## Architecture
@@ -46,7 +46,12 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Deployment
 
-### Vercel (Recommended)
+### Netlify preview
+
+Build settings are in `netlify.toml`. Follow [the Netlify deployment guide](NETLIFY_DEPLOYMENT.md)
+for the manual preview workflow, API checks, and current integration limits.
+
+### Vercel
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ivan09069/JIT-Command-Center)
 
 ### Manual
@@ -59,7 +64,7 @@ npm start
 
 | Component | Technology |
 |-----------|------------|
-| Framework | Next.js 14 |
+| Framework | Next.js 16 |
 | Language | TypeScript |
 | Styling | Tailwind CSS |
 | Fonts | Geist (Vercel) |
