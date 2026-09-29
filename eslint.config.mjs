@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Root leftovers. The running HUD is src/components/InfrastructureHUD.tsx.
+    "InfrastructureHUD.tsx",
+    "copy_files.js",
   ]),
 ]);
 

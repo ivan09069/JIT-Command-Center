@@ -1,6 +1,6 @@
 // lib/gate.ts - Policy Gate Middleware
 
-import { bus, type EventMap } from './bus';
+import { bus } from './bus';
 import { blackbox } from './blackbox';
 import { policyEngine, type PolicyContext, type ControlRequest, type SecurityState } from './policy';
 
@@ -47,7 +47,7 @@ class PolicyGate {
       }
 
       // Update context from status
-      if (event.source === 'disk' && event.payload?.percent) {
+      if (event.source === 'disk' && typeof event.payload.percent === 'number') {
         this.context.diskUsage = event.payload.percent;
       }
     });
@@ -172,8 +172,8 @@ class PolicyGate {
    */
   async executeControl(
     request: ControlRequest,
-    executor: () => Promise<any>
-  ): Promise<{ success: boolean; result?: any; decision: ReturnType<typeof policyEngine.evaluate> }> {
+    executor: () => Promise<unknown>
+  ): Promise<{ success: boolean; result?: unknown; decision: ReturnType<typeof policyEngine.evaluate> }> {
     const decision = this.evaluateControl(request);
 
     if (!decision.allowed) {
@@ -214,6 +214,15 @@ class PolicyGate {
         decision
       };
     }
+  }
+
+  /**
+   * Replace disk and threat readings with the latest local sample.
+   * Does not emit events; the status route owns the user-visible feed.
+   */
+  syncTelemetry(reading: { diskUsage: number; threatLevel: number }) {
+    this.context.diskUsage = reading.diskUsage;
+    this.context.threatLevel = Math.max(0, Math.min(100, reading.threatLevel));
   }
 
   /**

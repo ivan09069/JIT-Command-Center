@@ -1,198 +1,65 @@
-﻿// app/api/status/route.ts - Live deployment status from Vercel + Railway
+import { probeCloudAdapters } from '@/lib/cloud-probes';
+import { gate } from '@/lib/gate';
+import { collectHostTelemetry } from '@/lib/host-metrics';
+import { assessPressure, nextFeed, type FeedItem, type TelemetryReport } from '@/lib/telemetry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-interface VercelDeployment {
-  uid: string;
-  name: string;
-  url: string;
-  state: 'BUILDING' | 'ERROR' | 'INITIALIZING' | 'QUEUED' | 'READY' | 'CANCELED';
-  createdAt: number;
-  ready: number;
-}
-
-async function getVercelDeployments() {
-  const token = process.env.VERCEL_TOKEN;
-  const projectId = process.env.VERCEL_PROJECT_ID;
-
-  if (!token || !projectId) {
-    return { 
-      ok: false, 
-      error: 'VERCEL_TOKEN or VERCEL_PROJECT_ID not set',
-      data: null 
-    };
-  }
-
-  try {
-    const res = await fetch(
-      `https://api.vercel.com/v6/deployments?projectId={projectId}&limit=5`,
-      {
-        headers: { 
-          Authorization: `Bearer {token}`,
-          'Content-Type': 'application/json'
-        },
-        cache: 'no-store'
-      }
-    );
-
-    if (!res.ok) {
-      return { 
-        ok: false, 
-        error: `Vercel API returned {res.status}`,
-        data: null 
-      };
-    }
-
-    const json = await res.json();
-    const deployments: VercelDeployment[] = json.deployments || [];
-
-    return {
-      ok: true,
-      data: {
-        project: projectId,
-        deployments: deployments.map(d => ({
-          id: d.uid,
-          name: d.name,
-          url: `https://{d.url}`,
-          state: d.state,
-          createdAt: d.createdAt,
-          readyAt: d.ready
-        })),
-        latest: deployments[0] || null
-      }
-    };
-  } catch (err) {
-    return { 
-      ok: false, 
-      error: String(err),
-      data: null 
-    };
-  }
-}
-
-async function getRailwayServices() {
-  const token = process.env.RAILWAY_TOKEN;
-  
-  if (!token) {
-    return { 
-      ok: false, 
-      error: 'RAILWAY_TOKEN not set',
-      data: null 
-    };
-  }
-
-  try {
-    const query = `
-      query {
-        projects {
-          edges {
-            node {
-              id
-              name
-              services {
-                edges {
-                  node {
-                    id
-                    name
-                    deployments(first: 3) {
-                      edges {
-                        node {
-                          id
-                          status
-                          createdAt
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    const res = await fetch('https://backboard.railway.app/graphql/v2', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer {token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ query }),
-      cache: 'no-store'
-    });
-
-    if (!res.ok) {
-      return { 
-        ok: false, 
-        error: `Railway API returned {res.status}`,
-        data: null 
-      };
-    }
-
-    const json = await res.json();
-    
-    if (json.errors) {
-      return {
-        ok: false,
-        error: json.errors[0]?.message || 'Railway GraphQL error',
-        data: null
-      };
-    }
-
-    const projects = json.data?.projects?.edges || [];
-    const services = projects.flatMap((p: any) => 
-      (p.node.services?.edges || []).map((s: any) => ({
-        id: s.node.id,
-        name: s.node.name,
-        project: p.node.name,
-        deployments: (s.node.deployments?.edges || []).map((d: any) => ({
-          id: d.node.id,
-          status: d.node.status,
-          createdAt: d.node.createdAt
-        }))
-      }))
-    );
-
-    return {
-      ok: true,
-      data: { services }
-    };
-  } catch (err) {
-    return { 
-      ok: false, 
-      error: String(err),
-      data: null 
-    };
-  }
-}
-
-async function getDiskStatus() {
-  return {
-    ok: true,
-    data: {
-      total: 1000 * 1024 * 1024 * 1024,
-      used: 995 * 1024 * 1024 * 1024,
-      free: 5 * 1024 * 1024 * 1024,
-      percent: 99.5
-    }
-  };
-}
+let feed: FeedItem[] = [];
 
 export async function GET() {
-  const [vercel, railway, disk] = await Promise.allSettled([
-    getVercelDeployments(),
-    getRailwayServices(),
-    getDiskStatus()
-  ]);
+  try {
+    const raw = await collectHostTelemetry();
+    const pressure = assessPressure({
+      volumes: raw.volumes,
+      workspaceMount: raw.workspaceMount,
+      memoryPercent: raw.memory.percent,
+      cpuPercent: raw.cpu.usagePercent,
+    });
+    feed = nextFeed(feed, pressure.health, pressure.threat);
+    const cloud = await probeCloudAdapters();
+    const volumeCount = raw.volumes.length;
 
-  return Response.json({
-    timestamp: Date.now(),
-    status: {
-      vercel: vercel.status === 'fulfilled' ? vercel.value : { ok: false, error: 'Promise rejected' },
-      railway: railway.status === 'fulfilled' ? railway.value : { ok: false, error: 'Promise rejected' },
-      disk: disk.status === 'fulfilled' ? disk.value : { ok: false, error: 'Promise rejected' }
-    }
-  });
+    const body: TelemetryReport = {
+      timestamp: Date.now(),
+      host: raw.host,
+      cpu: raw.cpu,
+      memory: raw.memory,
+      volumes: raw.volumes,
+      workspaceMount: raw.workspaceMount,
+      volumeSource: raw.volumeSource,
+      volumeWarning: raw.volumeWarning,
+      primaryMount: pressure.primary?.mount ?? null,
+      adapters: [
+        {
+          name: 'Host',
+          state: volumeCount > 0 ? 'online' : 'degraded',
+          detail: volumeCount > 0
+            ? `${raw.host.hostname} · ${volumeCount} volume${volumeCount === 1 ? '' : 's'}`
+            : 'No volumes reported',
+        },
+        ...cloud,
+      ],
+      threat: pressure.threat,
+      health: pressure.health,
+      feed,
+      process: raw.process,
+    };
+
+    gate.syncTelemetry({
+      diskUsage: pressure.primary?.percent ?? 0,
+      threatLevel: pressure.threat.level,
+    });
+
+    return Response.json(body, {
+      headers: { 'Cache-Control': 'no-store' },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Telemetry read failed';
+    return Response.json(
+      { timestamp: Date.now(), error: message.slice(0, 200) },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } }
+    );
+  }
 }

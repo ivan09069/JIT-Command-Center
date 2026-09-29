@@ -1,172 +1,318 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import useSWR from 'swr';
+import {
+  formatBytes,
+  formatUptime,
+  shortCpuModel,
+  type ProbeState,
+  type TelemetryReport,
+  type Volume,
+} from '@/lib/telemetry';
+
+async function fetcher(url: string): Promise<TelemetryReport> {
+  const res = await fetch(url, { cache: 'no-store' });
+  const body = await res.json();
+  if (!res.ok) {
+    throw new Error(typeof body?.error === 'string' ? body.error : `Status ${res.status}`);
+  }
+  return body as TelemetryReport;
+}
+
+function toneClass(percent: number): string {
+  if (percent >= 90) return 'tone-crit';
+  if (percent >= 75) return 'tone-warn';
+  return 'tone-ok';
+}
+
+function toneColor(percent: number): string {
+  if (percent >= 90) return 'var(--hud-red)';
+  if (percent >= 75) return 'var(--hud-amber)';
+  return 'var(--hud-cyan)';
+}
+
+function healthLabel(overall: TelemetryReport['health']['overall'] | null): string {
+  if (overall === 'RED') return 'SYS CRITICAL';
+  if (overall === 'YELLOW') return 'SYS DEGRADED';
+  if (overall === 'GREEN') return 'SYS ONLINE';
+  return 'SYS SAMPLING';
+}
+
+function probeClass(state: ProbeState): string {
+  if (state === 'online') return 'tone-live';
+  if (state === 'degraded') return 'tone-warn';
+  if (state === 'offline') return 'tone-crit';
+  return 'tone-muted';
+}
+
+function Clock() {
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    const tick = () => setNow(new Date());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  if (!now) return <span>--:--:--</span>;
+  return <span>{now.toLocaleTimeString()} · {now.toLocaleDateString()}</span>;
+}
+
+function SampleAge({ timestamp }: { timestamp: number }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const seconds = Math.max(0, Math.round((now - timestamp) / 1000));
+  return <span>{seconds}s ago</span>;
+}
+
+function Meter({
+  label,
+  percent,
+  detail,
+}: {
+  label: string;
+  percent: number;
+  detail: string;
+}) {
+  const width = Math.max(0, Math.min(100, percent));
+  return (
+    <div
+      className="hud-meter"
+      role="meter"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Number(width.toFixed(1))}
+    >
+      <div className="hud-meter-label">
+        <span>{label}</span>
+        <span className={toneClass(width)}>{width.toFixed(1)}%</span>
+      </div>
+      <div className="hud-meter-track">
+        <div className="hud-meter-fill" style={{ width: `${width}%`, background: toneColor(width) }} />
+      </div>
+      <div className="hud-meter-detail">{detail}</div>
+    </div>
+  );
+}
+
+function VolumeRow({ volume, workspace, primary }: { volume: Volume; workspace: boolean; primary: boolean }) {
+  const width = Math.max(0, Math.min(100, volume.percent));
+  const tags = [
+    volume.kind,
+    volume.fileSystem,
+    workspace ? 'workspace' : '',
+    primary ? 'watched' : '',
+  ].filter(Boolean).join(' · ');
+  return (
+    <div className="hud-volume" data-mount={volume.mount}>
+      <div className="hud-volume-top">
+        <span>{volume.name ? `${volume.mount} ${volume.name}` : volume.mount}</span>
+        <span className={toneClass(width)}>{width.toFixed(1)}%</span>
+      </div>
+      <div className="hud-volume-track" aria-hidden="true">
+        <div className="hud-volume-fill" style={{ width: `${width}%`, background: toneColor(width) }} />
+      </div>
+      <div className="hud-volume-meta">
+        {formatBytes(volume.used)} used · {formatBytes(volume.free)} free · {formatBytes(volume.total)}
+        {tags ? ` · ${tags}` : ''}
+      </div>
+    </div>
+  );
+}
 
 export default function InfrastructureHUD() {
-  const [diskPct, setDiskPct] = useState(99.5);
-  const [threatLevel, setThreatLevel] = useState(70);
-  const [currentTime, setCurrentTime] = useState(new Date());
+  const { data, error, isValidating } = useSWR('/api/status', fetcher, {
+    refreshInterval: 3000,
+    dedupingInterval: 1500,
+    revalidateOnFocus: true,
+  });
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+  const band = data?.threat.band ?? 'low';
+  const primary = data?.volumes.find((volume) => volume.mount === data.primaryMount) ?? null;
+  const link = error ? 'OFFLINE' : data ? 'LIVE' : 'SAMPLING';
+  const linkClass = error ? 'tone-crit' : data ? 'tone-live' : 'tone-warn';
 
   return (
-    <div 
-      className="hud-stage"
-      data-threat={
-        threatLevel >= 80 ? 'critical' :
-        threatLevel >= 60 ? 'elevated' : 
-        threatLevel >= 40 ? 'moderate' : 
-        'low'
-      }
-    >
-      {/* Header */}
+    <div className="hud-stage" data-threat={data ? band : 'low'} data-testid="hud-stage">
       <header className="hud-header">
-        <div className="hud-chip" style={{ color: 'var(--hud-green)' }}>
-          SYS ONLINE
+        <div
+          className={`hud-chip ${data ? (data.health.overall === 'GREEN' ? 'tone-live' : data.health.overall === 'YELLOW' ? 'tone-warn' : 'tone-crit') : 'tone-warn'}`}
+          data-testid="health-chip"
+        >
+          {error && !data ? 'SYS OFFLINE' : healthLabel(data?.health.overall ?? null)}
         </div>
-        <div className="hud-title">
-          ECHOFORGE COMMAND CENTER
-        </div>
-        <div className="hud-chip" style={{ color: 'var(--hud-green)' }}>
-          ACTIVE
+        <div className="hud-title">EchoForge Command Center</div>
+        <div className="hud-chip" data-testid="hostname">
+          {data?.host.hostname ?? 'LOCAL HOST'}
         </div>
       </header>
 
-      {/* Main Grid */}
-      <main className="mx-auto max-w-6xl px-6 pb-24 grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Telemetry Core */}
-        <section className="hud-panel">
-          <div className="hud-corners">
-            <span/><span/><span/><span/>
-          </div>
-
+      <main className="hud-main mx-auto max-w-7xl">
+        <section className="hud-panel min-w-0" data-testid="storage-panel">
+          <div className="hud-corners"><span /><span /><span /><span /></div>
           <div className="hud-panel-title">
-            <span>▸ Telemetry Core</span>
-            <span style={{ color: 'var(--hud-amber)' }}>DISK: WARN</span>
+            <span>▸ Storage</span>
+            <span className={primary ? toneClass(primary.percent) : 'tone-warn'} data-testid="disk-state">
+              {primary ? (primary.percent >= 95 ? 'DISK: CRIT' : primary.percent >= 85 ? 'DISK: WARN' : 'DISK: OK') : 'DISK: —'}
+            </span>
           </div>
 
-          <div className="arc-core">
-            <div className="arc-core-inner">
-              <div className="text-center">
-                <div className="arc-core-value" style={{ color: 'var(--hud-cyan)' }}>
-                  {Math.round(diskPct)}%
-                </div>
-                <div className="arc-core-sub" style={{ color: 'var(--hud-cyan)' }}>
-                  ARC-CORE STABILITY
+          {primary ? (
+            <div
+              className="arc-core"
+              style={{ ['--used' as string]: String(primary.percent), ['--arc-color' as string]: toneColor(primary.percent) }}
+            >
+              <div className="arc-core-inner">
+                <div className="text-center">
+                  <div className={`arc-core-value ${toneClass(primary.percent)}`} data-testid="disk-percent">
+                    {primary.percent.toFixed(1)}%
+                  </div>
+                  <div className="arc-core-sub">
+                    {primary.mount}{primary.name ? ` · ${primary.name}` : ''}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <p className="hud-reason" data-testid="disk-percent">{error ? 'No disk sample.' : 'Reading disks…'}</p>
+          )}
 
-          <div className="mt-6 space-y-2 text-sm font-mono">
-            <div className="flex justify-between">
-              <span className="opacity-70">• usedPct:</span>
-              <span style={{ color: 'var(--hud-cyan)' }}>{diskPct.toFixed(1)}%</span>
+          {data && (
+            <div data-testid="volume-list">
+              {data.volumes.map((volume) => (
+                <VolumeRow
+                  key={volume.mount}
+                  volume={volume}
+                  workspace={volume.mount === data.workspaceMount}
+                  primary={volume.mount === data.primaryMount}
+                />
+              ))}
+              <p className="hud-volume-meta">
+                Source {data.volumeSource}
+                {data.workspaceMount ? ` · workspace ${data.workspaceMount}` : ''}
+              </p>
+              {data.volumeWarning && <p className="hud-warning">{data.volumeWarning}</p>}
             </div>
-            <div className="flex justify-between">
-              <span className="opacity-70">• freeGb:</span>
-              <span style={{ color: 'var(--hud-cyan)' }}>26.4 / totalGb: 94.3</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="opacity-70">• mount:</span>
-              <span style={{ color: 'var(--hud-cyan)' }}>/data/data/com.termux</span>
-            </div>
-          </div>
+          )}
         </section>
 
-        {/* Threat Level */}
-        <section className="hud-panel hud-focused">
-          <div className="hud-corners">
-            <span/><span/><span/><span/>
-          </div>
-
+        <section className="hud-panel min-w-0" data-testid="compute-panel">
+          <div className="hud-corners"><span /><span /><span /><span /></div>
           <div className="hud-panel-title">
-            <span>▸ Threat Level</span>
-            <span style={{ color: 'var(--hud-amber)' }}>{threatLevel} / 100</span>
+            <span>▸ Compute</span>
+            <span className="tone-ok">{data ? `${data.cpu.cores} cores` : '—'}</span>
           </div>
 
-          <div className="mt-6">
-            <div className="relative h-10 bg-black/40 rounded-lg overflow-hidden border border-purple-500/20">
-              <div 
-                className="absolute top-0 left-0 h-full transition-all duration-500"
-                style={{
-                  width: `${threatLevel}%`,
-                  background: 'linear-gradient(90deg, var(--hud-green) 0%, var(--hud-amber) 50%, var(--hud-red) 100%)'
-                }}
+          {data ? (
+            <>
+              <Meter
+                label="CPU"
+                percent={data.cpu.usagePercent}
+                detail={shortCpuModel(data.cpu.model)}
               />
-              <div 
-                className="absolute top-1/2 transform -translate-y-1/2 w-4 h-4 bg-white rounded-full border-2"
-                style={{ 
-                  left: `${threatLevel}%`, 
-                  marginLeft: '-8px',
-                  borderColor: 'var(--hud-bg)',
-                  boxShadow: 'var(--glow)'
-                }}
+              <div data-testid="cpu-percent" hidden>{data.cpu.usagePercent.toFixed(1)}</div>
+              <Meter
+                label="Memory"
+                percent={data.memory.percent}
+                detail={`${formatBytes(data.memory.used)} used · ${formatBytes(data.memory.free)} free · ${formatBytes(data.memory.total)}`}
               />
-            </div>
+              <div data-testid="memory-percent" hidden>{data.memory.percent.toFixed(1)}</div>
+              <dl className="hud-facts">
+                <dt>host</dt><dd>{data.host.hostname}</dd>
+                <dt>os</dt><dd>{data.host.platform} {data.host.release} · {data.host.arch}</dd>
+                <dt>up</dt><dd>{formatUptime(data.host.uptimeSec)}</dd>
+                <dt>node</dt><dd>{data.host.node}</dd>
+                <dt>proc</dt><dd>pid {data.process.pid} · rss {formatBytes(data.process.rss)} · up {formatUptime(data.process.uptimeSec)}</dd>
+              </dl>
+            </>
+          ) : (
+            <p className="hud-reason">{error ? 'Compute sample unavailable.' : 'Sampling CPU and memory…'}</p>
+          )}
+        </section>
 
-            <div className="text-right mt-3 text-3xl font-bold" style={{ color: 'var(--hud-amber)' }}>
-              {threatLevel}%
-            </div>
+        <section className="hud-panel min-w-0" data-testid="posture-panel">
+          <div className="hud-corners"><span /><span /><span /><span /></div>
+          <div className="hud-panel-title">
+            <span>▸ Posture</span>
+            <span className={data ? toneClass(data.threat.level) : 'tone-warn'} data-testid="threat-level">
+              {data ? `${data.threat.level} / 100` : '—'}
+            </span>
+          </div>
 
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <div className="hud-chip" style={{ borderColor: 'rgba(255,176,32,.55)', color: 'var(--hud-amber)' }}>
-                WARN @ 60%
-              </div>
-              <div className="hud-chip" style={{ borderColor: 'rgba(255,61,110,.55)', color: 'var(--hud-red)' }}>
-                CRIT @ 80%
-              </div>
-            </div>
-
-            <p className="text-center text-sm opacity-70 mt-4">
-              Higher = more sensitive alerts.
+          {error && !data && (
+            <p className="hud-warning" data-testid="status-error">
+              Telemetry unavailable. {error instanceof Error ? error.message : 'The status API did not respond.'}
             </p>
-          </div>
-        </section>
+          )}
 
-        {/* HUD Notes */}
-        <section className="hud-panel">
-          <div className="hud-corners">
-            <span/><span/><span/><span/>
-          </div>
+          {data && (
+            <>
+              <div className={`text-3xl font-bold mt-2 ${toneClass(data.threat.level)}`}>
+                {data.threat.band.toUpperCase()}
+              </div>
+              <p className="hud-volume-meta">Derived from this machine&apos;s disks, memory, and CPU.</p>
+              <div data-testid="reasons">
+                {data.health.reasons.map((reason) => (
+                  <p className="hud-reason" key={reason}>{reason}</p>
+                ))}
+              </div>
 
-          <div className="hud-panel-title">
-            <span>▸ EchoForge HUD Notes</span>
-          </div>
+              <div className="hud-kicker">Adapters</div>
+              <div data-testid="adapters">
+                {data.adapters.map((adapter) => (
+                  <div className="hud-volume" key={adapter.name}>
+                    <div className="hud-volume-top">
+                      <span>{adapter.name}</span>
+                      <span className={probeClass(adapter.state)}>{adapter.state.toUpperCase()}</span>
+                    </div>
+                    <div className="hud-volume-meta">{adapter.detail}</div>
+                  </div>
+                ))}
+              </div>
 
-          <div className="font-mono text-sm leading-6" style={{ color: 'var(--hud-green)' }}>
-            We can borrow CRT<br/>
-            scanlines + glitch effects<br/>
-            from your Whale Matrix<br/>
-            project.
-          </div>
+              <div className="hud-kicker">Changes</div>
+              <ul className="hud-feed" data-testid="feed">
+                {data.feed.length === 0 && <li>Waiting for the first sample.</li>}
+                {data.feed.map((item) => (
+                  <li key={`${item.ts}-${item.signature}`}>
+                    <span className={item.severity === 'critical' ? 'tone-crit' : item.severity === 'warning' ? 'tone-warn' : 'tone-live'}>
+                      {new Date(item.ts).toLocaleTimeString()}
+                    </span>
+                    {' · '}
+                    {item.msg}
+                  </li>
+                ))}
+              </ul>
+              <p className="hud-volume-meta">Remote deploy controls stay off unless JIT_ALLOW_REMOTE_CONTROL=1.</p>
+            </>
+          )}
         </section>
       </main>
 
-      {/* Bottom Status Bar */}
-      <div className="hud-status-bar">
-        <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-8">
+      <div className="hud-status-bar" data-testid="status-bar">
+        <div className="hud-status-row">
+          <div className="flex items-center gap-6 flex-wrap">
             <div className="hud-status-indicator">
-              <div className="hud-status-dot" style={{ background: 'var(--hud-green)' }} />
-              <span style={{ color: 'var(--hud-green)' }}>LIVE</span>
+              <div className="hud-status-dot" style={{ background: error ? 'var(--hud-red)' : 'var(--hud-green)' }} />
+              <span className={linkClass} data-testid="link-state">{link}{isValidating && data ? ' · SYNC' : ''}</span>
             </div>
             <div className="hud-status-indicator">
               <div className="hud-status-dot" style={{ background: 'var(--hud-cyan)' }} />
-              <span style={{ color: 'var(--hud-cyan)' }}>SECURE</span>
+              <span className="tone-ok">
+                {data ? `THREAT ${data.threat.band.toUpperCase()}` : 'THREAT —'}
+              </span>
             </div>
             <div className="hud-status-indicator">
-              <div className="hud-status-dot" style={{ background: 'var(--hud-amber)' }} />
-              <span style={{ color: 'var(--hud-amber)' }}>THREAT: MODERATE</span>
+              <span className="tone-muted">
+                {data ? <SampleAge timestamp={data.timestamp} /> : 'no sample'}
+              </span>
             </div>
           </div>
-
-          <div className="opacity-50">
-            {currentTime.toLocaleTimeString()} | {currentTime.toLocaleDateString()}
-          </div>
+          <div className="opacity-70"><Clock /></div>
         </div>
       </div>
     </div>

@@ -12,13 +12,29 @@ import type { ControlRequest } from '@/lib/policy';
  * CRITICAL: This is server-side only. Never expose tokens to client.
  */
 export async function POST(request: Request) {
-  const controlRequest: ControlRequest = await request.json();
+  let controlRequest: ControlRequest;
+  try {
+    controlRequest = await request.json();
+  } catch {
+    return Response.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
 
   // Validate request
-  if (!controlRequest.type || !controlRequest.target) {
+  if (!controlRequest?.type || !controlRequest.target) {
     return Response.json(
       { error: 'Invalid control request' },
       { status: 400 }
+    );
+  }
+
+  // Local dashboards stay read-only unless this process is explicitly opted in.
+  if (process.env.JIT_ALLOW_REMOTE_CONTROL !== '1') {
+    return Response.json(
+      {
+        success: false,
+        error: 'Remote control is disabled on this host. Set JIT_ALLOW_REMOTE_CONTROL=1 to permit Vercel or Railway mutations.',
+      },
+      { status: 403 }
     );
   }
 
@@ -63,6 +79,11 @@ export async function POST(request: Request) {
   });
 }
 
+function stringParam(params: Record<string, unknown> | undefined, key: string, fallback = ''): string {
+  const value = params?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
 /**
  * Execute Vercel deployment
  */
@@ -87,7 +108,7 @@ async function executeDeploy(request: ControlRequest) {
       target: 'production',
       gitSource: {
         type: 'github',
-        ref: request.params?.ref || 'main'
+        ref: stringParam(request.params, 'ref', 'main')
       }
     })
   });
@@ -104,6 +125,7 @@ async function executeDeploy(request: ControlRequest) {
  * Execute Vercel redeploy (trigger new build of latest)
  */
 async function executeRedeploy(request: ControlRequest) {
+  void request;
   const token = process.env.VERCEL_TOKEN;
   const projectId = process.env.VERCEL_PROJECT_ID;
 
@@ -167,9 +189,14 @@ async function executeRestart(request: ControlRequest) {
   }
 
   // Railway restart via GraphQL
+  const serviceId = stringParam(request.params, 'serviceId');
+  if (!/^[A-Za-z0-9_-]+$/.test(serviceId)) {
+    throw new Error('Invalid Railway service id');
+  }
+
   const mutation = `
     mutation {
-      serviceInstanceRedeploy(serviceId: "${request.params?.serviceId}") {
+      serviceInstanceRedeploy(serviceId: "${serviceId}") {
         id
       }
     }
@@ -202,6 +229,7 @@ async function executeRestart(request: ControlRequest) {
  * Execute rollback (Vercel alias change)
  */
 async function executeRollback(request: ControlRequest) {
+  void request;
   const token = process.env.VERCEL_TOKEN;
   
   if (!token) {
@@ -217,5 +245,6 @@ async function executeRollback(request: ControlRequest) {
  * Execute scale operation (Railway)
  */
 async function executeScale(request: ControlRequest) {
+  void request;
   throw new Error('Scale not yet implemented');
 }

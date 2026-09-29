@@ -17,7 +17,7 @@ export interface Incident {
   msg: string;
   category: 'deployment' | 'security' | 'system' | 'agent';
   severity: 'info' | 'warning' | 'critical';
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 class BlackBox {

@@ -3,7 +3,7 @@
 export type EventMap = {
   STATUS_UPDATE: { 
     source: 'vercel' | 'railway' | 'disk' | 'agents' | 'security';
-    payload: any;
+    payload: Record<string, unknown>;
     severity?: 'info' | 'warning' | 'critical';
   };
   THREAT_CHANGED: { 
@@ -32,10 +32,12 @@ export type EventMap = {
 };
 
 type Handler<K extends keyof EventMap> = (event: EventMap[K]) => void;
+type BusEvent = EventMap[keyof EventMap];
+type Listener = (event: BusEvent) => void;
 
 class EventBus {
-  private listeners = new Map<string, Set<Function>>();
-  private history: Array<{ type: string; event: any; ts: number }> = [];
+  private listeners = new Map<string, Set<Listener>>();
+  private history: Array<{ type: string; event: BusEvent; ts: number }> = [];
   private maxHistory = 1000;
 
   on<K extends keyof EventMap>(type: K, fn: Handler<K>) {
@@ -43,10 +45,11 @@ class EventBus {
     if (!this.listeners.has(key)) {
       this.listeners.set(key, new Set());
     }
-    this.listeners.get(key)!.add(fn);
+    const listener = fn as Listener;
+    this.listeners.get(key)!.add(listener);
     
     // Return unsubscribe function
-    return () => this.listeners.get(key)!.delete(fn);
+    return () => this.listeners.get(key)!.delete(listener);
   }
 
   emit<K extends keyof EventMap>(type: K, event: EventMap[K]) {

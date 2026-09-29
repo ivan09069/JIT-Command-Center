@@ -7,7 +7,7 @@ export type PolicyDecision = {
   reason: string;
   threatDelta: number;
   actions: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 };
 
 export type SecurityState = 
@@ -29,7 +29,7 @@ export interface PolicyContext {
 export interface ControlRequest {
   type: 'deploy' | 'restart' | 'scale' | 'redeploy' | 'rollback';
   target: string; // deployment name
-  params?: Record<string, any>;
+  params?: Record<string, unknown>;
 }
 
 /**
@@ -166,25 +166,30 @@ export class PolicyEngine {
   /**
    * Evaluate if a bus event should raise threat level
    */
-  evaluateEventThreat(eventType: keyof EventMap, eventData: any): number {
+  evaluateEventThreat(eventType: keyof EventMap, eventData: unknown): number {
+    const record = typeof eventData === 'object' && eventData !== null
+      ? eventData as Record<string, unknown>
+      : {};
     let threatDelta = 0;
 
     switch (eventType) {
       case 'INCIDENT_APPEND':
-        if (eventData.severity === 'critical') threatDelta += 10;
-        if (eventData.severity === 'warning') threatDelta += 3;
+        if (record.severity === 'critical') threatDelta += 10;
+        if (record.severity === 'warning') threatDelta += 3;
         break;
 
       case 'STATUS_UPDATE':
-        if (eventData.severity === 'critical') threatDelta += 5;
+        if (record.severity === 'critical') threatDelta += 5;
         break;
 
       case 'DEPLOYMENT_STATE':
-        if (eventData.state === 'error') threatDelta += 8;
+        if (record.state === 'error') threatDelta += 8;
         break;
 
       case 'AGENT_REPORT':
-        if (eventData.critical > 0) threatDelta += eventData.critical * 2;
+        if (typeof record.critical === 'number' && record.critical > 0) {
+          threatDelta += record.critical * 2;
+        }
         break;
     }
 
